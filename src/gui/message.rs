@@ -178,7 +178,7 @@ impl ResolveMods {
 #[derive(Debug)]
 pub struct Integrate {
     rid: RequestID,
-    result: Result<(), IntegrationError>,
+    result: Result<Duration, IntegrationError>,
 }
 
 impl Integrate {
@@ -210,9 +210,12 @@ impl Integrate {
     fn receive(self, app: &mut App) {
         if Some(self.rid) == app.integrate_rid.as_ref().map(|r| r.rid) {
             match self.result {
-                Ok(()) => {
+                Ok(duration) => {
                     info!("integration complete");
-                    app.last_action = Some(LastAction::success("integration complete".to_string()));
+                    app.last_action = Some(LastAction::success(format!(
+                        "integration complete | took {:.1} seconds",
+                        duration.as_secs_f32()
+                    )));
                 }
                 Err(ref e)
                     if let IntegrationError::ProviderError { source } = e
@@ -359,7 +362,7 @@ async fn integrate_async(
     config: MetaConfig,
     rid: RequestID,
     message_tx: Sender<Message>,
-) -> Result<(), IntegrationError> {
+) -> Result<Duration, IntegrationError> {
     let update = false;
 
     let mods = store.resolve_mods(&mod_specs, update).await?;
@@ -397,7 +400,7 @@ async fn integrate_async(
 
     let paths = store.fetch_mods_ordered(&urls, update, Some(tx)).await?;
 
-    tokio::task::spawn_blocking(|| {
+    let duration = tokio::task::spawn_blocking(|| {
         crate::integrate::integrate(
             fsd_pak,
             config,
@@ -406,7 +409,7 @@ async fn integrate_async(
     })
     .await??;
 
-    Ok(())
+    Ok(duration)
 }
 
 #[derive(Debug)]

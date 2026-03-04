@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io::{BufReader, BufWriter, Cursor, ErrorKind, Read, Seek, Write};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use fs_err as fs;
 
@@ -221,7 +222,10 @@ pub fn integrate<P: AsRef<Path>>(
     path_pak: P,
     config: MetaConfig,
     mods: Vec<(ModInfo, PathBuf)>,
-) -> Result<(), IntegrationError> {
+) -> Result<Duration, IntegrationError> {
+    // start timer
+    let start_time = SystemTime::now();
+
     let Ok(installation) = DRGInstallation::from_pak_path(&path_pak) else {
         return Err(IntegrationError::DrgInstallationNotFound {
             path: path_pak.as_ref().to_path_buf(),
@@ -495,13 +499,20 @@ pub fn integrate<P: AsRef<Path>>(
 
     bundle.finish()?;
 
+    // get duration
+    let finish_time = SystemTime::now();
+    let running_time = finish_time
+        .duration_since(start_time)
+        .unwrap_or(Duration::from_secs(0));
+
     info!(
-        "{} mods installed to {}",
+        "{} mods installed to {}. Took {} seconds",
         mods.len(),
-        path_mod_pak.display()
+        path_mod_pak.display(),
+        running_time.as_secs_f32(),
     );
 
-    Ok(())
+    Ok(running_time)
 }
 
 fn collect_dir_files(dir: &'static include_dir::Dir, collect: &mut HashMap<String, &[u8]>) {

@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
@@ -189,7 +190,7 @@ fn get_pak_path(state: &State, arg: &Option<PathBuf>) -> Result<PathBuf> {
         .context("Could not find DRG pak file, please specify manually with the --fsd_pak flag")
 }
 
-async fn action_integrate(dirs: Dirs, action: ActionIntegrate) -> Result<()> {
+async fn action_integrate(dirs: Dirs, action: ActionIntegrate) -> Result<Duration> {
     let mut state = State::init(dirs)?;
     let game_pak_path = get_pak_path(&state, &action.fsd_pak)?;
     debug!(?game_pak_path);
@@ -211,7 +212,7 @@ async fn action_integrate(dirs: Dirs, action: ActionIntegrate) -> Result<()> {
     .map_err(|e| anyhow!("{}", e))
 }
 
-async fn action_integrate_profile(dirs: Dirs, action: ActionIntegrateProfile) -> Result<()> {
+async fn action_integrate_profile(dirs: Dirs, action: ActionIntegrateProfile) -> Result<Duration> {
     let mut state = State::init(dirs)?;
     let game_pak_path = get_pak_path(&state, &action.fsd_pak)?;
     debug!(?game_pak_path);

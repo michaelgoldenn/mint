@@ -7,6 +7,7 @@ pub mod providers;
 pub mod state;
 
 use std::ops::Deref;
+use std::time::Duration;
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
@@ -105,7 +106,7 @@ pub async fn resolve_unordered_and_integrate<P: AsRef<Path>>(
     state: &State,
     mod_specs: &[ModSpecification],
     update: bool,
-) -> Result<(), IntegrationError> {
+) -> Result<Duration, IntegrationError> {
     let mods = state.store.resolve_mods(mod_specs, update).await?;
 
     let mods_set = mod_specs
@@ -203,14 +204,14 @@ pub async fn resolve_unordered_and_integrate_with_provider_init<P, F>(
     mod_specs: &[ModSpecification],
     update: bool,
     init: F,
-) -> Result<(), MintError>
+) -> Result<Duration, MintError>
 where
     P: AsRef<Path>,
     F: Fn(&mut State, String, &ProviderFactory) -> Result<(), MintError>,
 {
     loop {
         match resolve_unordered_and_integrate(&game_path, state, mod_specs, update).await {
-            Ok(()) => return Ok(()),
+            Ok(duration) => return Ok(duration),
             Err(ref e)
                 if let IntegrationError::ProviderError { source } = e
                     && let ProviderError::NoProvider { url, factory } = source =>
