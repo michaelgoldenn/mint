@@ -655,28 +655,44 @@ impl<W: Write + Seek> ModBundleWriter<W> {
     }
 }
 
-struct ModBundleReader {
+struct ModBundleReader<R: Read + Seek> {
+    reader: R,
     pak_reader: PakReader,
 }
 
-impl ModBundleReader {
-    fn new<R: Read + Seek>(pak_reader: &mut R) -> Result<Self, IntegrationError> {
+impl<R: Read + Seek> ModBundleReader<R> {
+    fn new(reader: &R) -> Result<Self, IntegrationError> {
         Ok(ModBundleReader {
+            reader: reader.clone(),
             pak_reader: repak::PakBuilder::new()
                 .compression([repak::Compression::Zlib])
-                .reader(pak_reader)?,
+                .reader(&mut reader.clone())?,
         })
     }
 
-    fn read_meta<R: Read + Seek>(
-        &self,
-        reader: &mut R,
-        path: &str,
-    ) -> Result<Meta, IntegrationError> {
+    fn read_meta(&self, reader: &mut R, path: &str) -> Result<Meta, IntegrationError> {
         let mut buf = vec![];
         self.pak_reader.read_file(path, reader, &mut buf)?;
         let meta = postcard::from_bytes(&buf)?;
         Ok(meta)
+    }
+
+    fn mod_list_changed(&self, current_mod_list: &[ModInfo]) -> bool {
+        let meta = self.read_meta(&mut file, "meta").unwrap();
+        info!("Read {} installed mods", meta.mods.len());
+        // TODO: stop just comparing the names, take versions into account
+        let current_meta_mods: HashSet<MetaMod> = current_mod_list.iter().map(|x| x.name).collect();
+        let meta_mods: HashSet<String> = meta.mods.into_iter().map(|x| x.name).collect();
+        if current_meta_mods == meta_mods {
+            info!("Installed mods are exactly the same as existing mods, no need to reinstall");
+            let finish_time = SystemTime::now();
+            let running_time = finish_time
+                .duration_since(start_time)
+                .unwrap_or(Duration::from_secs(0));
+
+            return Ok(running_time);
+        }
+        false
     }
 }
 

@@ -48,7 +48,6 @@ pub struct ModInfo {
     pub modio_tags: Option<ModioTags>,                 // only available for mods from mod.io
     pub modio_id: Option<u32>,                         // only available for mods from mod.io
 }
-
 /// Returned from ModProvider
 #[derive(Debug, Clone)]
 pub enum ModResponse {
