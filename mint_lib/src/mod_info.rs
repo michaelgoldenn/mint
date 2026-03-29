@@ -141,6 +141,22 @@ pub struct MetaMod {
     pub approval: ApprovalStatus,
     pub required: bool,
 }
+impl From<&ModInfo> for MetaMod {
+    fn from(value: &ModInfo) -> Self {
+        MetaMod {
+            name: value.name.clone(),
+            version: "TODO".into(), // TODO
+            author: "TODO".into(),  // TODO
+            required: value.suggested_require,
+            url: value.resolution.get_resolvable_url_or_name().to_string(),
+            approval: value
+                .modio_tags
+                .as_ref()
+                .map(|t| t.approval_status)
+                .unwrap_or(ApprovalStatus::Sandbox),
+        }
+    }
+}
 impl Meta {
     pub fn to_server_list_string(&self) -> String {
         use itertools::Itertools;

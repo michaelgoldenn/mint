@@ -1,11 +1,12 @@
 use std::collections::{HashMap, HashSet};
+use std::fs::File;
 use std::io::{BufReader, BufWriter, Cursor, ErrorKind, Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use fs_err as fs;
 
-use repak::PakWriter;
+use repak::{PakReader, PakWriter};
 use serde::Deserialize;
 use snafu::{Whatever, prelude::*};
 use tracing::{info, warn};
@@ -197,6 +198,8 @@ pub enum IntegrationError {
     #[snafu(transparent)]
     JoinError { source: tokio::task::JoinError },
     #[snafu(transparent)]
+    PostcardErrpr { source: postcard::Error },
+    #[snafu(transparent)]
     LintError { source: LintError },
     #[snafu(display("self update failed: {source:?}"))]
     SelfUpdateFailed {
@@ -298,6 +301,26 @@ pub fn integrate<P: AsRef<Path>>(
             Err(repak::Error::MissingEntry(_)) => Ok(None),
             Err(e) => Err(e),
         }?;
+    }
+
+    let mut file = File::open(&path_mod_pak)?;
+    if let Ok(reader) = ModBundleReader::new(&mut file) {
+        let meta = reader.read_meta(&mut file, "meta").unwrap();
+        info!("Read {} installed mods", meta.mods.len());
+        // TODO: stop just comparing the names, take versions into account
+        let new_mods: HashSet<String> = mods.iter().map(|x| x.0.name.clone()).collect();
+        let meta_mods: HashSet<String> = meta.mods.into_iter().map(|x| x.name).collect();
+        if new_mods == meta_mods {
+            info!("Installed mods are exactly the same as existing mods, no need to reinstall");
+            let finish_time = SystemTime::now();
+            let running_time = finish_time
+                .duration_since(start_time)
+                .unwrap_or(Duration::from_secs(0));
+
+            return Ok(running_time);
+        }
+    } else {
+        info!("Could not read existing .pak, creating new one");
     }
 
     let mut bundle = ModBundleWriter::new(
@@ -620,21 +643,7 @@ impl<W: Write + Seek> ModBundleWriter<W> {
         let meta = Meta {
             version: mint_lib::built_info::version().into(),
             config,
-            mods: mods
-                .iter()
-                .map(|(info, _)| MetaMod {
-                    name: info.name.clone(),
-                    version: "TODO".into(), // TODO
-                    author: "TODO".into(),  // TODO
-                    required: info.suggested_require,
-                    url: info.resolution.get_resolvable_url_or_name().to_string(),
-                    approval: info
-                        .modio_tags
-                        .as_ref()
-                        .map(|t| t.approval_status)
-                        .unwrap_or(ApprovalStatus::Sandbox),
-                })
-                .collect(),
+            mods: mods.iter().map(|(info, _)| info.into()).collect(),
         };
         self.write_file(&postcard::to_allocvec(&meta).unwrap(), "meta")?;
         Ok(())
@@ -643,6 +652,31 @@ impl<W: Write + Seek> ModBundleWriter<W> {
     fn finish(self) -> Result<(), IntegrationError> {
         self.pak_writer.write_index()?;
         Ok(())
+    }
+}
+
+struct ModBundleReader {
+    pak_reader: PakReader,
+}
+
+impl ModBundleReader {
+    fn new<R: Read + Seek>(pak_reader: &mut R) -> Result<Self, IntegrationError> {
+        Ok(ModBundleReader {
+            pak_reader: repak::PakBuilder::new()
+                .compression([repak::Compression::Zlib])
+                .reader(pak_reader)?,
+        })
+    }
+
+    fn read_meta<R: Read + Seek>(
+        &self,
+        reader: &mut R,
+        path: &str,
+    ) -> Result<Meta, IntegrationError> {
+        let mut buf = vec![];
+        self.pak_reader.read_file(path, reader, &mut buf)?;
+        let meta = postcard::from_bytes(&buf)?;
+        Ok(meta)
     }
 }
 
